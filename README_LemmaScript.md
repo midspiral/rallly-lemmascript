@@ -25,7 +25,7 @@ Any non-`undefined` output is a single-slash absolute path on the same origin �
 
 The ranking core of `getPollResults` extracted into a pure helper. The async/Prisma shell stays in `data.ts` and calls into `scorePoll` after building per-option `{yes, ifNeedBe}` counts. Public return shape of `getPollResults` is preserved exactly.
 
-For the score formula `(yes + ifNeedBe) * 1000 + yes`, eight ensures clauses pin the ranking semantics:
+Eight ensures clauses pin the ranking semantics. The score formula is `(yes + ifNeedBe) * 1000 + yes`:
 
 - **Length preservation.** Output has one scored option per input option.
 - **`highScore` non-negativity.** Holds even when no one voted (the `, 0` floor in `Math.max(...scores, 0)`).
@@ -34,7 +34,7 @@ For the score formula `(yes + ifNeedBe) * 1000 + yes`, eight ensures clauses pin
 - **Top-choice characterization.** `isTopChoice` iff `score === highScore && highScore > 0`. The "> 0" rule prevents declaring a winner when no one voted.
 - **Score formula.** Pins `(yes + ifNeedBe) * 1000 + yes` at the spec level (not just the implementation level).
 - **Within-poll monotonicity.** If option A's `yes` and `ifNeedBe` both dominate option B's, then A's score is at least B's. A strictly-better option can't rank lower.
-- **Tiebreaker injectivity.** Equal scores ⇒ equal `(yes, ifNeedBe)`. The `* 1000 + yes` encoding is uniquely decodable, so two options with the same score must have voted-on identically.
+- **Tiebreaker injectivity.** Equal scores ⇒ equal `(yes, ifNeedBe)`. The `* 1000 + yes` encoding is uniquely decodable, so two options with the same score must have identical `(yes, ifNeedBe)` tallies.
 
 The injectivity theorem requires a `yes < 1000` precondition — and that's a real spec-level finding worth flagging. The score formula has 1000 as the encoding base, so any option with ≥ 1000 `yes` votes overflows into the `(yes + ifNeedBe) * 1000` slot and the formula stops being uniquely decodable. In practice, rallly polls have far fewer voters per option, so this isn't a live bug; but it's a quietly-load-bearing assumption in the existing implementation that the verified spec now makes explicit.
 
