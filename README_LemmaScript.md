@@ -86,7 +86,7 @@ This case study drove four LemmaScript additions, exercised by the Rallly entry 
 - **`s.startsWith(prefix)`** — added to the string special-forms table (Dafny: `|s| >= |p| && s[..|p|] == p`).
 - **`parseTsType` and `null` nullability.** Collapses `T | null | undefined` to `Option<T>` (previously it only handled `T | undefined`, leaving `string | null` as a user type).
 - **`\result` narrowing under `==>`.** `\result` is desugared (in `resolve`) to a regular IR variable named `"\\result"`, with the ensures-context environment pre-seeded so that `\result === undefined` premise narrowing works through the standard variable-narrowing infrastructure. Both backends' `escapeName` render the IR name back to `res` at emit time.
-- **`Math.max` / `Math.min` with spread args.** `Math.max(...arr, 0)` is rewritten at extract time to `MaxOfSeq(arr ++ [0])` (and similarly for `Math.min`). New Dafny preambles `MaxOfSeq` / `MinOfSeq` (with built-in `forall` / `exists` ensures clauses) plus helper lemmas `MaxOfSeqConcat` / `MinOfSeqConcat` that users invoke to prove element bounds across concatenations. The first three rallly use of `Math.max(...scores, 0)` is in `scorePoll`.
+- **`Math.max` / `Math.min` with spread args.** `Math.max(...arr, 0)` is rewritten at extract time to `MaxOfSeq(arr ++ [0])` (and similarly for `Math.min`). New Dafny preambles `MaxOfSeq` / `MinOfSeq` carry built-in `forall` / `exists` ensures clauses. Helper lemmas `MaxOfSeqConcat` / `MinOfSeqConcat` are available for users to invoke when proving element bounds across concatenations. First rallly use is in `scorePoll`.
 
 ## How It Works
 
