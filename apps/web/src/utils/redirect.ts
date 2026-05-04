@@ -1,3 +1,5 @@
+//@ backend dafny
+
 /**
  * Validates a redirect URL to prevent open redirect attacks.
  * Only allows relative URLs starting with "/" but not "//" (protocol-relative).
@@ -8,6 +10,10 @@
 export function validateRedirectUrl(
   redirectTo?: string | null,
 ): string | undefined {
+  //@ verify
+  //@ ensures \result !== undefined ==> \result.startsWith("/")
+  //@ ensures \result !== undefined ==> !\result.startsWith("//")
+  //@ ensures \result !== undefined ==> \result.length >= 1
   if (!redirectTo) {
     return undefined;
   }
