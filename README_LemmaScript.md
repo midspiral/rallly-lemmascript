@@ -1,10 +1,14 @@
-# Rallly — Verified with LemmaScript (nascent)
+# Rallly — Verified with LemmaScript
 
-Fork of [lukevella/rallly](https://github.com/lukevella/rallly) with one production function — `validateRedirectUrl` in `apps/web/src/utils/redirect.ts` — annotated and verified in-place against the [LemmaScript](https://github.com/midspiral/LemmaScript) Dafny backend. [Diff vs. main.](https://github.com/midspiral/rallly-lemmascript/compare/main..lemmascript)
+Fork of [lukevella/rallly](https://github.com/lukevella/rallly) with two pieces of production logic verified against the [LemmaScript](https://github.com/midspiral/LemmaScript) Dafny backend: a redirect-URL safety predicate (in-place) and the poll-scoring core (extracted helper). [Diff vs. main.](https://github.com/midspiral/rallly-lemmascript/compare/main..lemmascript)
 
-**Status: nascent.** One function, three postconditions, body unchanged. Smaller than hono/casbin/xyflow. Exists to demonstrate the in-place workflow on a Next.js app and to pin three LemmaScript additions (see [Notes for LemmaScript](#notes-for-lemmascript)). **Not** a comprehensive verification of Rallly.
+Two functions, ten verification conditions, zero errors. The case study also drove four additions to LemmaScript itself (see [Notes for LemmaScript](#notes-for-lemmascript)). Smaller in scope than `node-casbin` or `clear-split`; comparable to `xyflow`.
 
 ## What's Verified
+
+### `validateRedirectUrl` — `apps/web/src/utils/redirect.ts` (in-place)
+
+Body unchanged. Three ensures clauses pin the open-redirect property:
 
 ```typescript
 //@ verify
@@ -13,14 +17,42 @@ Fork of [lukevella/rallly](https://github.com/lukevella/rallly) with one product
 //@ ensures \result !== undefined ==> \result.length >= 1
 ```
 
-Any non-`undefined` output is a single-slash absolute path on the same origin — the function cannot return `https://evil.com`, `//evil.com`, or `""`. 5 VCs, 0 errors. The other function in the file (`buildSafeRedirectUrl`) uses `URLSearchParams` and is silently skipped (selective mode, SPEC §2.6).
+Any non-`undefined` output is a single-slash absolute path on the same origin — the function cannot return `https://evil.com`, `//evil.com`, or `""`. The other function in the file (`buildSafeRedirectUrl`) uses `URLSearchParams` and is silently skipped (selective mode, SPEC §2.6).
+
+5 VCs, 0 errors.
+
+### `scorePoll` — `apps/web/src/features/poll/scoring.ts` (extracted core)
+
+The ranking core of `getPollResults` extracted into a pure helper. The async/Prisma shell stays in `data.ts` and calls into `scorePoll` after building per-option `{yes, ifNeedBe}` counts. Public return shape of `getPollResults` is preserved exactly.
+
+```typescript
+//@ verify
+//@ requires forall(i: nat, i < input.length ==> input[i].yes >= 0 && input[i].ifNeedBe >= 0)
+//@ ensures \result.options.length === input.length
+//@ ensures \result.highScore >= 0
+//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score >= 0)
+//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score <= \result.highScore)
+//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].isTopChoice === (\result.options[i].score === \result.highScore && \result.options[i].score > 0))
+```
+
+In words, for the score formula `(yes + ifNeedBe) * 1000 + yes`:
+
+- **Length preservation.** Output has one scored option per input option.
+- **Score non-negativity.** Every per-option score is ≥ 0.
+- **`highScore` upper bound.** Every per-option score is ≤ `highScore` (with `highScore = Math.max(...scores, 0)`).
+- **`highScore` non-negativity.** Holds even when no one voted (the `, 0` floor in `Math.max`).
+- **Top-choice characterization.** `isTopChoice` is `true` iff the option's score equals `highScore` *and* `highScore > 0`. The "> 0" rule prevents declaring a winner when no one voted.
+
+5 VCs, 0 errors. The `.dfy` file has a one-line proof addition (`MaxOfSeqConcat(scores, [0])`); everything else is auto-discharged.
 
 ## Caveats
 
-Two model/runtime divergences. Both safe-direction (verified ⊆ runtime safe), but real:
+Two model/runtime divergences in `validateRedirectUrl`. Both safe-direction (verified ⊆ runtime safe), but real:
 
 1. **`StringTrim` strips only ASCII space (`0x20`).** JS `.trim()` also strips `\t \n \r \v \f`, NBSP `\xA0`, and other Unicode whitespace. Same shape as [hono CVE-2026-39410](https://github.com/honojs/hono/security/advisories/GHSA-r5rp-j6wh-rvv4).
 2. **`!s` on `Option<string>` lowers to "is None".** JS also treats `Some("")` as falsy; the model lets `""` fall through (still safe — empty string fails the `startsWith("/")` check).
+
+For `scorePoll`, the boundary worth flagging: `data.ts` extracts `yes` / `ifNeedBe` counts from the raw Prisma `groupBy` rows via a `find`-based helper (`votes.find((v) => v.type === type)?.count ?? 0`). That extraction is **not** verified — it's the unverified shell around the verified core. The `scorePoll` proof assumes the input `{yes, ifNeedBe}` non-negativity precondition is honored by callers; `data.ts` constructs counts via Prisma's `_count` aggregation which is non-negative by construction.
 
 ## Setup
 
@@ -37,25 +69,24 @@ cd ../LemmaScript/tools && npm install && cd -
 ../LemmaScript/tools/check.sh dafny
 ```
 
-Reads `LemmaScript-files.txt` (a single line: `apps/web/src/utils/redirect.ts`), regenerates `apps/web/src/utils/redirect.dfy.gen`, and runs `dafny verify` on `apps/web/src/utils/redirect.dfy`. CI runs the same script on every push (`.github/workflows/lemmascript.yml`) and asserts the regenerated `.dfy.gen` matches what's committed (catches drift between the TS source and the verified artifact).
+Reads `LemmaScript-files.txt` (currently lists `apps/web/src/utils/redirect.ts` and `apps/web/src/features/poll/scoring.ts`), regenerates each `.dfy.gen`, and runs `dafny verify` on each `.dfy`. CI runs the same script on every push (`.github/workflows/lemmascript.yml`) and asserts the regenerated `.dfy.gen` matches what's committed (catches drift between the TS source and the verified artifact).
 
 ## What's Next
 
 In rough priority order — each item is a separate piece of work, not a roadmap commitment.
 
-1. **Tighten the `StringTrim` gap.** The cleanest version of this case study mirrors hono's `trimCookieWhitespace` story: replace `.trim()` with an explicit `charCodeAt`-based loop that only strips a documented set (e.g., `0x20` and `0x09`), and verify that loop is correct character-by-character. The before/after diff *is* the case study — same shape as the hono CVE writeup.
-2. **Verify a second function.** Candidates with a similar small-but-real shape: `isBusinessEmail` (set-membership predicate over the free-domain list), `getSelfHostedSeatLimit` (license-tier → seat-count switch with bounds). Together with `validateRedirectUrl` these would form a "verified utility belt" closer in scope to xyflow's nine-function case study.
-3. **Verify the poll-scoring core.** `getPollResults` in `apps/web/src/features/poll/data.ts` contains the actual ranking logic for meeting polls — the score formula `(yes + ifNeedBe) * 1000 + yes`, top-choice maximality, tie-breaker correctness. The function is `async` + Prisma-bound, so this requires extracting the pure scoring loop into a same-file helper before annotating it. This is the only candidate that would yield a Tier-1 algorithmic theorem at Rallly's scale; everything else in the codebase is React, tRPC, or Prisma queries that are out of fragment.
+1. **Tighten the `StringTrim` gap.** Replace `.trim()` in `validateRedirectUrl` with an explicit `charCodeAt`-based loop that only strips a documented set (e.g., `0x20` and `0x09`), and verify that loop is correct character-by-character. The before/after diff *is* the case study — same shape as the [hono cookie CVE writeup](https://github.com/midspiral/hono-lemmascript/blob/lemmascript/src/utils/cookie.ts#L79).
+2. **Verify a third function.** Candidates with a similar small-but-real shape: `isBusinessEmail` (set-membership predicate over the free-domain list), `getSelfHostedSeatLimit` (license-tier → seat-count switch with bounds). Together with `validateRedirectUrl` and `scorePoll` these would form a "verified utility belt" closer in scope to xyflow's nine-function case study.
+3. **Strengthen `scorePoll` with stretch theorems.** Score monotonicity (adding a `yes` vote doesn't decrease the score), tiebreaker injectivity (the `* 1000 + yes` encoding orders ties correctly when `yes < 1000`), full ranking soundness. Each is a non-trivial proof; not on the critical path but raises the substance of the per-theorem story.
 
 ## Notes for LemmaScript
 
-This case study drove three LemmaScript additions, all in service of making the spec `\result !== undefined ==> \result.startsWith("/")` work:
+This case study drove four LemmaScript additions, exercised by the Rallly entry in [`LemmaScript/.github/workflows/ci.yml`](https://github.com/midspiral/LemmaScript/blob/main/.github/workflows/ci.yml). Regressions in any of these would fail the LemmaScript CI before merging.
 
-- `s.startsWith(prefix)` in the string special-forms table (Dafny: `|s| >= |p| && s[..|p|] == p`).
-- `parseTsType` collapses `T | null | undefined` to `Option<T>` (previously it only handled `T | undefined`, leaving `string | null` as a `user` type).
-- `\result` is desugared (in `resolve`) to a regular IR variable named `"\\result"`, with the ensures-context environment pre-seeded so that `\result === undefined` premise narrowing under `==>` works through the standard variable-narrowing infrastructure. Both backends' `escapeName` render the IR name back to `res` at emit time — the canonical Dafny/Lean return-value identifier.
-
-These are now exercised by Rallly's CI matrix entry in [`LemmaScript/.github/workflows/ci.yml`](https://github.com/midspiral/LemmaScript/blob/main/.github/workflows/ci.yml), so a regression in any of the three would fail before LemmaScript merges.
+- **`s.startsWith(prefix)`** — added to the string special-forms table (Dafny: `|s| >= |p| && s[..|p|] == p`).
+- **`parseTsType` and `null` nullability.** Collapses `T | null | undefined` to `Option<T>` (previously it only handled `T | undefined`, leaving `string | null` as a user type).
+- **`\result` narrowing under `==>`.** `\result` is desugared (in `resolve`) to a regular IR variable named `"\\result"`, with the ensures-context environment pre-seeded so that `\result === undefined` premise narrowing works through the standard variable-narrowing infrastructure. Both backends' `escapeName` render the IR name back to `res` at emit time.
+- **`Math.max` / `Math.min` with spread args.** `Math.max(...arr, 0)` is rewritten at extract time to `MaxOfSeq(arr ++ [0])` (and similarly for `Math.min`). New Dafny preambles `MaxOfSeq` / `MinOfSeq` (with built-in `forall` / `exists` ensures clauses) plus helper lemmas `MaxOfSeqConcat` / `MinOfSeqConcat` that users invoke to prove element bounds across concatenations. The first three rallly use of `Math.max(...scores, 0)` is in `scorePoll`.
 
 ## How It Works
 
@@ -66,6 +97,6 @@ Annotations are TypeScript comments — invisible to `tsc`, visible to LemmaScri
 //@ ensures \result !== undefined ==> \result.startsWith("/")
 ```
 
-The `//@ backend dafny` directive at the top of `redirect.ts` restricts this file to the Dafny backend (Lean's string fragment doesn't include `.trim()`). Other functions in the file without `//@ verify` are silently skipped — selective verification per LemmaScript SPEC §2.6.
+The `//@ backend dafny` directive at the top of each verified file restricts it to the Dafny backend. Other functions in the same file without `//@ verify` are silently skipped — selective verification per LemmaScript SPEC §2.6.
 
 For a fuller introduction, see the [LemmaScript blog post](https://midspiral.com/blog/lemmascript-a-verification-toolchain-for-typescript/) and [SPEC.md](https://github.com/midspiral/LemmaScript/blob/main/SPEC.md).

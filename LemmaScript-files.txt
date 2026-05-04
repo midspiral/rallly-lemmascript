@@ -1,1 +1,2 @@
 apps/web/src/utils/redirect.ts
+apps/web/src/features/poll/scoring.ts

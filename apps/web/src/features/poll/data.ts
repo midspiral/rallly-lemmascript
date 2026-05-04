@@ -2,6 +2,8 @@ import type { PollStatus, Prisma } from "@rallly/database";
 import { prisma } from "@rallly/database";
 import { shortUrl } from "@rallly/utils/absolute-url";
 
+import { scorePoll, type OptionVotes } from "./scoring";
+
 export async function getPollResults({
   pollId,
   spaceId,
@@ -67,44 +69,44 @@ export async function getPollResults({
     votes.push({ type: row.type, count: row._count });
   }
 
-  // Helper to get count for a specific vote type
   const getCount = (
     votes: Array<{ type: string; count: number }>,
     type: string,
   ) => votes.find((v) => v.type === type)?.count ?? 0;
 
-  // Calculate scores for each option
-  // Ranking: total availability (yes + ifNeedBe) is primary, yes votes as tiebreaker
-  // Score formula: (yes + ifNeedBe) * 1000 + yes
-  const optionResults = poll.options.map((option) => {
+  // Hand the scoring math off to the verified core in scoring.ts.
+  // Score formula, highScore (Math.max), and isTopChoice are proven there.
+  const scoringInput: OptionVotes[] = poll.options.map((option) => {
     const votes = votesByOption.get(option.id) ?? [];
-    const yesCount = getCount(votes, "yes");
-    const ifNeedBeCount = getCount(votes, "ifNeedBe");
-    const score = (yesCount + ifNeedBeCount) * 1000 + yesCount;
-
     return {
       id: option.id,
-      startTime: option.startTime,
-      duration: option.duration,
-      votes,
-      score,
+      yes: getCount(votes, "yes"),
+      ifNeedBe: getCount(votes, "ifNeedBe"),
     };
   });
+  const scoring = scorePoll(scoringInput);
 
-  // Find the high score
-  const highScore = Math.max(...optionResults.map((o) => o.score), 0);
-
-  // Add isTopChoice flag
-  const options = optionResults.map((option) => ({
-    ...option,
-    isTopChoice: option.score === highScore && option.score > 0,
-  }));
+  // Re-attach the per-option metadata that scoring.ts doesn't track.
+  // Each scoring option's id is one of poll.options[*].id by construction
+  // (scoringInput was built directly from poll.options), so the lookup is total.
+  const optionMeta = new Map(poll.options.map((o) => [o.id, o]));
+  const options = scoring.options.map((s) => {
+    const meta = optionMeta.get(s.id)!;
+    return {
+      id: s.id,
+      startTime: meta.startTime,
+      duration: meta.duration,
+      votes: votesByOption.get(s.id) ?? [],
+      score: s.score,
+      isTopChoice: s.isTopChoice,
+    };
+  });
 
   return {
     pollId: poll.id,
     participantCount: poll._count.participants,
     options,
-    highScore,
+    highScore: scoring.highScore,
   };
 }
 
