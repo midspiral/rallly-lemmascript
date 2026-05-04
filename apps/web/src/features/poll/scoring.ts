@@ -35,12 +35,29 @@ export interface PollScoring {
 
 export function scorePoll(input: OptionVotes[]): PollScoring {
   //@ verify
+  // Preconditions: vote counts are non-negative, and yes counts fit the
+  // tiebreaker encoding (< 1000) so the score formula stays injective.
   //@ requires forall(i: nat, i < input.length ==> input[i].yes >= 0 && input[i].ifNeedBe >= 0)
+  //@ requires forall(i: nat, i < input.length ==> input[i].yes < 1000)
+  // Length preservation: one scored option per input option.
   //@ ensures \result.options.length === input.length
+  // highScore non-negativity: holds even when no option has any votes
+  // (the `, 0` floor in `Math.max(...scores, 0)`).
   //@ ensures \result.highScore >= 0
+  // Per-option score non-negativity: each score is in [0, highScore].
   //@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score >= 0)
+  // highScore is the upper bound: every per-option score is <= highScore.
   //@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score <= \result.highScore)
+  // Top-choice characterization: isTopChoice iff score equals highScore AND
+  // highScore > 0 (the "> 0" rule prevents declaring a winner when no one voted).
   //@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].isTopChoice === (\result.options[i].score === \result.highScore && \result.options[i].score > 0))
+  // Score formula: pins the (yes + ifNeedBe) * 1000 + yes encoding at the spec level.
+  //@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score === (input[i].yes + input[i].ifNeedBe) * 1000 + input[i].yes)
+  // Within-poll monotonicity: a strictly-better option ranks at least as high.
+  //@ ensures forall(i: nat, forall(j: nat, i < \result.options.length && j < \result.options.length && input[i].yes >= input[j].yes && input[i].ifNeedBe >= input[j].ifNeedBe ==> \result.options[i].score >= \result.options[j].score))
+  // Tiebreaker injectivity: same score implies same (yes, ifNeedBe) — the
+  // * 1000 + yes encoding is uniquely decodable when yes < 1000.
+  //@ ensures forall(i: nat, forall(j: nat, i < \result.options.length && j < \result.options.length && \result.options[i].score === \result.options[j].score ==> input[i].yes === input[j].yes && input[i].ifNeedBe === input[j].ifNeedBe))
   const scores: number[] = input.map(
     (o) => (o.yes + o.ifNeedBe) * 1000 + o.yes,
   );

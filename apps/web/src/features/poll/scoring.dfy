@@ -36,11 +36,15 @@ datatype PollScoring = PollScoring(options: seq<ScoredOption>, highScore: int)
 
 method scorePoll(input: seq<OptionVotes>) returns (res: PollScoring)
   requires forall i: nat :: ((i < |input|) ==> ((input[i].yes >= 0) && (input[i].ifNeedBe >= 0)))
+  requires forall i: nat :: ((i < |input|) ==> (input[i].yes < 1000))
   ensures (|res.options| == |input|)
   ensures (res.highScore >= 0)
   ensures forall i: nat :: ((i < |res.options|) ==> (res.options[i].score >= 0))
   ensures forall i: nat :: ((i < |res.options|) ==> (res.options[i].score <= res.highScore))
   ensures forall i: nat :: ((i < |res.options|) ==> (res.options[i].isTopChoice == ((res.options[i].score == res.highScore) && (res.options[i].score > 0))))
+  ensures forall i: nat :: ((i < |res.options|) ==> (res.options[i].score == (((input[i].yes + input[i].ifNeedBe) * 1000) + input[i].yes)))
+  ensures forall i: nat, j: nat :: ((i < |res.options|) ==> (j < |res.options|) ==> (input[i].yes >= input[j].yes) ==> (input[i].ifNeedBe >= input[j].ifNeedBe) ==> (res.options[i].score >= res.options[j].score))
+  ensures forall i: nat, j: nat :: ((i < |res.options|) ==> (j < |res.options|) ==> (res.options[i].score == res.options[j].score) ==> ((input[i].yes == input[j].yes) && (input[i].ifNeedBe == input[j].ifNeedBe)))
 {
   var scores := Std.Collections.Seq.Map((o: OptionVotes) => (((o.yes + o.ifNeedBe) * 1000) + o.yes), input);
   var i_t0 := MaxOfSeq((scores + [0]));

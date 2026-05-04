@@ -25,23 +25,18 @@ Any non-`undefined` output is a single-slash absolute path on the same origin �
 
 The ranking core of `getPollResults` extracted into a pure helper. The async/Prisma shell stays in `data.ts` and calls into `scorePoll` after building per-option `{yes, ifNeedBe}` counts. Public return shape of `getPollResults` is preserved exactly.
 
-```typescript
-//@ verify
-//@ requires forall(i: nat, i < input.length ==> input[i].yes >= 0 && input[i].ifNeedBe >= 0)
-//@ ensures \result.options.length === input.length
-//@ ensures \result.highScore >= 0
-//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score >= 0)
-//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].score <= \result.highScore)
-//@ ensures forall(i: nat, i < \result.options.length ==> \result.options[i].isTopChoice === (\result.options[i].score === \result.highScore && \result.options[i].score > 0))
-```
-
-In words, for the score formula `(yes + ifNeedBe) * 1000 + yes`:
+For the score formula `(yes + ifNeedBe) * 1000 + yes`, eight ensures clauses pin the ranking semantics:
 
 - **Length preservation.** Output has one scored option per input option.
+- **`highScore` non-negativity.** Holds even when no one voted (the `, 0` floor in `Math.max(...scores, 0)`).
 - **Score non-negativity.** Every per-option score is ≥ 0.
-- **`highScore` upper bound.** Every per-option score is ≤ `highScore` (with `highScore = Math.max(...scores, 0)`).
-- **`highScore` non-negativity.** Holds even when no one voted (the `, 0` floor in `Math.max`).
-- **Top-choice characterization.** `isTopChoice` is `true` iff the option's score equals `highScore` *and* `highScore > 0`. The "> 0" rule prevents declaring a winner when no one voted.
+- **`highScore` upper bound.** Every per-option score is ≤ `highScore`.
+- **Top-choice characterization.** `isTopChoice` iff `score === highScore && highScore > 0`. The "> 0" rule prevents declaring a winner when no one voted.
+- **Score formula.** Pins `(yes + ifNeedBe) * 1000 + yes` at the spec level (not just the implementation level).
+- **Within-poll monotonicity.** If option A's `yes` and `ifNeedBe` both dominate option B's, then A's score is at least B's. A strictly-better option can't rank lower.
+- **Tiebreaker injectivity.** Equal scores ⇒ equal `(yes, ifNeedBe)`. The `* 1000 + yes` encoding is uniquely decodable, so two options with the same score must have voted-on identically.
+
+The injectivity theorem requires a `yes < 1000` precondition — and that's a real spec-level finding worth flagging. The score formula has 1000 as the encoding base, so any option with ≥ 1000 `yes` votes overflows into the `(yes + ifNeedBe) * 1000` slot and the formula stops being uniquely decodable. In practice, rallly polls have far fewer voters per option, so this isn't a live bug; but it's a quietly-load-bearing assumption in the existing implementation that the verified spec now makes explicit.
 
 5 VCs, 0 errors. The `.dfy` file has a one-line proof addition (`MaxOfSeqConcat(scores, [0])`); everything else is auto-discharged.
 
@@ -77,7 +72,7 @@ In rough priority order — each item is a separate piece of work, not a roadmap
 
 1. **Tighten the `StringTrim` gap.** Replace `.trim()` in `validateRedirectUrl` with an explicit `charCodeAt`-based loop that only strips a documented set (e.g., `0x20` and `0x09`), and verify that loop is correct character-by-character. The before/after diff *is* the case study — same shape as the [hono cookie CVE writeup](https://github.com/midspiral/hono-lemmascript/blob/lemmascript/src/utils/cookie.ts#L79).
 2. **Verify a third function.** Candidates with a similar small-but-real shape: `isBusinessEmail` (set-membership predicate over the free-domain list), `getSelfHostedSeatLimit` (license-tier → seat-count switch with bounds). Together with `validateRedirectUrl` and `scorePoll` these would form a "verified utility belt" closer in scope to xyflow's nine-function case study.
-3. **Strengthen `scorePoll` with stretch theorems.** Score monotonicity (adding a `yes` vote doesn't decrease the score), tiebreaker injectivity (the `* 1000 + yes` encoding orders ties correctly when `yes < 1000`), full ranking soundness. Each is a non-trivial proof; not on the critical path but raises the substance of the per-theorem story.
+3. **Cross-poll ranking soundness for `scorePoll`.** Beyond the within-poll properties already proven, sort-by-descending-score should produce a valid total-availability-then-yes ordering. This requires reasoning about a sort permutation; non-trivial proof effort.
 
 ## Notes for LemmaScript
 
