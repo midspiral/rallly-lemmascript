@@ -30,9 +30,12 @@ function validateRedirectUrl(redirectTo: Option<string>): Option<string>
 {
   match redirectTo {
     case Some(i_redirectTo_val) =>
-      var trimmed := StringTrim(i_redirectTo_val);
-      if ((|trimmed| >= |"/"| && trimmed[..|"/"|] == "/") && !((|trimmed| >= |"//"| && trimmed[..|"//"|] == "//"))) then
-        Some(trimmed)
+      if (|i_redirectTo_val| > 0) then
+        var trimmed := StringTrim(i_redirectTo_val);
+        if ((|trimmed| >= |"/"| && trimmed[..|"/"|] == "/") && !((|trimmed| >= |"//"| && trimmed[..|"//"|] == "//"))) then
+          Some(trimmed)
+        else
+          None
       else
         None
     case None =>
