@@ -2,7 +2,6 @@
 
 [![LemmaScript verified](https://img.shields.io/github/actions/workflow/status/midspiral/rallly-lemmascript/lemmascript.yml?branch=lemmascript&label=LemmaScript%20verified)](https://github.com/midspiral/rallly-lemmascript/actions/workflows/lemmascript.yml)
 
-
 Fork of [lukevella/rallly](https://github.com/lukevella/rallly) with two pieces of production logic verified against the [LemmaScript](https://github.com/midspiral/LemmaScript) Dafny backend: a redirect-URL safety predicate (in-place) and the poll-scoring core (extracted helper). [Diff vs. main.](https://github.com/midspiral/rallly-lemmascript/compare/main..lemmascript)
 
 Two functions, ten verification conditions, zero errors. The case study also drove four additions to LemmaScript itself (see [Notes for LemmaScript](#notes-for-lemmascript)). Smaller in scope than `node-casbin` or `clear-split`; comparable to `xyflow`.
