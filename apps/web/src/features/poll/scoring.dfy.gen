@@ -46,7 +46,7 @@ method scorePoll(input: seq<OptionVotes>) returns (res: PollScoring)
   ensures forall i: nat, j: nat :: ((i < |res.options|) ==> (j < |res.options|) ==> (input[i].yes >= input[j].yes) ==> (input[i].ifNeedBe >= input[j].ifNeedBe) ==> (res.options[i].score >= res.options[j].score))
   ensures forall i: nat, j: nat :: ((i < |res.options|) ==> (j < |res.options|) ==> (res.options[i].score == res.options[j].score) ==> ((input[i].yes == input[j].yes) && (input[i].ifNeedBe == input[j].ifNeedBe)))
 {
-  var scores := Std.Collections.Seq.Map((o: OptionVotes) => (((o.yes + o.ifNeedBe) * 1000) + o.yes), input);
+  var scores := seq(|input|, i_map requires 0 <= i_map < |input| => var o := input[i_map]; (((o.yes + o.ifNeedBe) * 1000) + o.yes));
   var i_t0 := MaxOfSeq((scores + [0]));
   var highScore := i_t0;
   var options: seq<ScoredOption> := [];
