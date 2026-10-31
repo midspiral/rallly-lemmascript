@@ -66,7 +66,6 @@ export function scorePoll(input: OptionVotes[]): PollScoring {
   let options: ScoredOption[] = [];
   let i = 0;
   while (i < input.length) {
-    //@ type i nat
     //@ invariant 0 <= i && i <= input.length
     //@ invariant options.length === i
     //@ invariant forall(j: nat, j < i ==> options[j].score === scores[j])
