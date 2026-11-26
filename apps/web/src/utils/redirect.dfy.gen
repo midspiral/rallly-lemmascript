@@ -2,6 +2,8 @@
 
 datatype Option<T> = None | Some(value: T)
 
+datatype Nullish<T> = Undefined | Null | Value(value: T)
+
 predicate IsJSWhitespace(c: char)
 {
   c == '\U{0009}' || c == '\U{000A}' || c == '\U{000B}' || c == '\U{000C}' || c == '\U{000D}' ||
@@ -36,24 +38,19 @@ function StringTrim(s: string): string
   StringTrimRight(StringTrimLeft(s))
 }
 
-function validateRedirectUrl(redirectTo: Option<string>): Option<string>
+function validateRedirectUrl(redirectTo: Nullish<string>): Option<string>
 {
-  match redirectTo {
-    case Some(i_redirectTo_val) =>
-      if (|i_redirectTo_val| > 0) then
-        var trimmed := StringTrim(i_redirectTo_val);
-        if ((|trimmed| >= |"/"| && trimmed[..|"/"|] == "/") && !((|trimmed| >= |"//"| && trimmed[..|"//"|] == "//"))) then
-          Some(trimmed)
-        else
-          None
-      else
-        None
-    case None =>
+  if (match redirectTo { case Value(i_value) => !((|i_value| > 0)) case Null => true case Undefined => true }) then
+    None
+  else
+    var trimmed := StringTrim(redirectTo.value);
+    if ((|trimmed| >= |"/"| && trimmed[..|"/"|] == "/") && !((|trimmed| >= |"//"| && trimmed[..|"//"|] == "//"))) then
+      Some(trimmed)
+    else
       None
-  }
 }
 
-lemma validateRedirectUrl_ensures(redirectTo: Option<string>)
+lemma validateRedirectUrl_ensures(redirectTo: Nullish<string>)
   ensures (match validateRedirectUrl(redirectTo) { case Some(i_result_val) => (|i_result_val| >= |"/"| && i_result_val[..|"/"|] == "/") case None => true })
   ensures (match validateRedirectUrl(redirectTo) { case Some(i_result_val) => !((|i_result_val| >= |"//"| && i_result_val[..|"//"|] == "//")) case None => true })
   ensures (match validateRedirectUrl(redirectTo) { case Some(i_result_val) => (|i_result_val| >= 1) case None => true })
